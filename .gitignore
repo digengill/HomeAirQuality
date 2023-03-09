@@ -11,7 +11,7 @@ webserver/db.sqlite
 
 # production
 **/build
-
+**/sdkconfig
 
 
 # misc
