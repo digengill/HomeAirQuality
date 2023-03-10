@@ -42,14 +42,14 @@
 
 
 /* Constants that aren't configurable in menuconfig */
-#define WEB_SERVER "10.0.0.40"
-#define WEB_PORT 3000
+#define WEB_SERVER "10.0.0.194"
+#define WEB_PORT 3001
 #define WEB_PATH "/sgp40"
 
 static const char *TAG = "example";
 
 static const char *REQUEST = "POST " WEB_PATH " HTTP/1.1\r\n"
-    "Host: "WEB_SERVER":3000\r\n"
+    "Host: "WEB_SERVER":3001\r\n"
     "Content-Type: application/x-www-form-urlencoded\r\n"
     "Content-Length: 41\r\n\r\n";
 

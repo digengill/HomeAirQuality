@@ -48,7 +48,7 @@ export default function App() {
  let zip = (a1, a2) => a1.map((x, i) => [x, a2[i]]);
 
  useEffect( () => {
-  axios.get(`http://localhost:3001/readings`)
+  axios.get(`http://10.0.0.194:3001/readings`)
   .then(res => {
     console.log(res.data.data);
     let tdt = []

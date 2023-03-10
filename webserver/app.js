@@ -7,7 +7,6 @@ var bodyParser = require('body-parser');
 app.use(bodyParser.json()); // support json encoded bodies
 app.use(bodyParser.urlencoded({ extended: true })); // support encoded bodies
 
-app.set('view engine', 'pug')
 
 app.get("/readings", (req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
@@ -38,6 +37,4 @@ app.post('/sgp40', (req, res) => {
     });
 })
 
-app.listen(port, () => {
-  console.log(`Example app listening on port ${port}`)
-})
+app.listen(port, '10.0.0.194');
