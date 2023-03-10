@@ -79,12 +79,7 @@ static void build_http_str(char *http_req, float temp, float humidity, int voc)
     strcat(http_req, buffer);
 }
 
-static void http_get_task()
-{
-    ESP_ERROR_CHECK(example_connect());
-
-    int s;
-    struct sockaddr_in serv_addr;
+static void getAverageReading(float *temp, float *humidity, int *voc) {
     bme680_t sensor;
     sgp40_t sgp;
 
@@ -94,38 +89,31 @@ static void http_get_task()
     ESP_ERROR_CHECK(sgp40_init(&sgp));
     ESP_LOGI(TAG, "SGP40 initilalized. Serial: 0x%04x%04x%04x",
             sgp.serial[0], sgp.serial[1], sgp.serial[2]);
-
     // setup bme680
     memset(&sensor, 0, sizeof(bme680_t));
     ESP_ERROR_CHECK(bme680_init_desc(&sensor, ADDR, PORT, CONFIG_EXAMPLE_I2C_MASTER_SDA, CONFIG_EXAMPLE_I2C_MASTER_SCL));
     // init the sensor
     ESP_ERROR_CHECK(bme680_init_sensor(&sensor));
-
     // Changes the oversampling rates to 4x oversampling for temperature
     // and 2x oversampling for humidity. Pressure measurement is skipped.
     bme680_set_oversampling_rates(&sensor, BME680_OSR_4X, BME680_OSR_NONE, BME680_OSR_2X);
-
     // Change the IIR filter size for temperature and pressure to 7.
     bme680_set_filter_size(&sensor, BME680_IIR_SIZE_7);
-
     // Change the heater profile 0 to 200 degree Celsius for 100 ms.
     bme680_set_heater_profile(&sensor, 0, 200, 100);
     bme680_use_heater_profile(&sensor, 0);
-
     // Set ambient temperature to 10 degree Celsius
     bme680_set_ambient_temperature(&sensor, 10);
-
     // as long as sensor configuration isn't changed, duration is constant
     uint32_t duration;
     bme680_get_measurement_duration(&sensor, &duration);
-
     bme680_values_float_t values;
-
     // Wait until all set up
     vTaskDelay(pdMS_TO_TICKS(250));
 
     int32_t voc_index;
-    while (true)
+    int iterations = 500; int32_t total = 0;
+    for (int i = 0; i <= iterations; i++)
     {
         // trigger the sensor to start one TPHG measurement cycle
         if (bme680_force_measurement(&sensor) == ESP_OK)
@@ -143,8 +131,29 @@ static void http_get_task()
             ESP_LOGI(TAG, "%.2f °C, %.2f %%, VOC index: %" PRIi32 ", Air is [%s]",
                 values.temperature, values.humidity, voc_index, voc_index_name(voc_index));
         }
+        if (i > 300)
+        {
+            total = total + voc_index;
+        }
+        vTaskDelay(3000 / portTICK_PERIOD_MS);
+    }
+    *voc = total / 200;
+    *temp = values.temperature;
+    *humidity = values.humidity;
+
+}
 
 
+static void http_get_task()
+{
+    float temp, humidity;
+    int voc;
+    getAverageReading(&temp, &humidity, &voc);
+
+    int s;
+    struct sockaddr_in serv_addr;
+    
+    while (true) {
         s = socket(AF_INET, SOCK_STREAM, 0);
         if(s < 0) {
             ESP_LOGE(TAG, "... Failed to allocate socket.");
@@ -175,7 +184,7 @@ static void http_get_task()
         ESP_LOGI(TAG, "... connected");
         int req_size = strlen(REQUEST)+52;
         char http_req[req_size];
-        build_http_str(http_req, values.temperature, values.humidity, voc_index);
+        build_http_str(http_req, temp, humidity, voc);
         ESP_LOGI(TAG, "%s", http_req);
 
         if (write(s, http_req, req_size) < 0) {
@@ -188,11 +197,7 @@ static void http_get_task()
 
         ESP_LOGI(TAG, "%s", http_req);
         close(s);
-
-        ESP_ERROR_CHECK(example_disconnect());
-
-        ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup(60000));
-        ESP_ERROR_CHECK(esp_light_sleep_start());
+        break;
     }
 }
 
@@ -205,14 +210,18 @@ void app_main(void)
     ESP_ERROR_CHECK(nvs_flash_init() );
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
+    ESP_ERROR_CHECK(example_connect());
 
     /* This helper function configures Wi-Fi or Ethernet, as selected in menuconfig.
      * Read "Establishing Wi-Fi or Ethernet Connection" section in
      * examples/protocols/README.md for more information about this function.
      */
-    
-    xTaskCreate(&http_get_task, "http_get_task", 4096, NULL, 5, NULL);
-    
+    http_get_task();
 
-  
+    const int wakeup_time_sec = 180; // 900 seconds = 15 minutes
+    ESP_LOGI(TAG, "Enabling timer wakeup, %ds\n", wakeup_time_sec);
+    esp_sleep_enable_timer_wakeup(wakeup_time_sec * 1000000);
+
+    ESP_LOGI(TAG, "Entering deep sleep\n");
+    esp_deep_sleep_start();
 }
