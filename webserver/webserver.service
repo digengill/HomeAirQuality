@@ -1,0 +1,11 @@
+Unit]
+Description=Node server daemon
+After=network.target
+
+[Service]
+User=root
+Group=root
+ExecStart=node /root/HomeAirQuality/webserver/app.js
+
+[Install]
+WantedBy=multi-user.target

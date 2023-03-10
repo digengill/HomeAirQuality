@@ -1,0 +1,11 @@
+Unit]
+Description=React ui daemon
+After=network.target
+
+[Service]
+User=root
+Group=root
+ExecStart=serve -s /root/HomeAirQuality/webserver_ui/readingDashboard/build
+
+[Install]
+WantedBy=multi-user.target
