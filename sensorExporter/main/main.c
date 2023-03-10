@@ -81,6 +81,8 @@ static void build_http_str(char *http_req, float temp, float humidity, int voc)
 
 static void http_get_task()
 {
+    ESP_ERROR_CHECK(example_connect());
+
     int s;
     struct sockaddr_in serv_addr;
     bme680_t sensor;
@@ -122,67 +124,76 @@ static void http_get_task()
     // Wait until all set up
     vTaskDelay(pdMS_TO_TICKS(250));
 
-
     int32_t voc_index;
-    // trigger the sensor to start one TPHG measurement cycle
-    if (bme680_force_measurement(&sensor) == ESP_OK)
+    while (true)
     {
-        // passive waiting until measurement results are available
-        vTaskDelay(duration);
+        // trigger the sensor to start one TPHG measurement cycle
+        if (bme680_force_measurement(&sensor) == ESP_OK)
+        {
+            // passive waiting until measurement results are available
+            vTaskDelay(duration);
 
-        // get the results and do something with them
-        if (bme680_get_results_float(&sensor, &values) == ESP_OK)
-            printf("BME680 Sensor: %.2f °C, %.2f %%, %.2f hPa, %.2f Ohm\n",
-                    values.temperature, values.humidity, values.pressure, values.gas_resistance);
-        
-	    // Feed it to SGP40
-        ESP_ERROR_CHECK(sgp40_measure_voc(&sgp, values.humidity, values.temperature, &voc_index));
-        ESP_LOGI(TAG, "%.2f °C, %.2f %%, VOC index: %" PRIi32 ", Air is [%s]",
-            values.temperature, values.humidity, voc_index, voc_index_name(voc_index));
-	}
+            // get the results and do something with them
+            if (bme680_get_results_float(&sensor, &values) == ESP_OK)
+                printf("BME680 Sensor: %.2f °C, %.2f %%, %.2f hPa, %.2f Ohm\n",
+                        values.temperature, values.humidity, values.pressure, values.gas_resistance);
+            
+            // Feed it to SGP40
+            ESP_ERROR_CHECK(sgp40_measure_voc(&sgp, values.humidity, values.temperature, &voc_index));
+            ESP_LOGI(TAG, "%.2f °C, %.2f %%, VOC index: %" PRIi32 ", Air is [%s]",
+                values.temperature, values.humidity, voc_index, voc_index_name(voc_index));
+        }
 
 
-    s = socket(AF_INET, SOCK_STREAM, 0);
-    if(s < 0) {
-        ESP_LOGE(TAG, "... Failed to allocate socket.");
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-        return;
-    }
-    ESP_LOGI(TAG, "... allocated socket");
+        s = socket(AF_INET, SOCK_STREAM, 0);
+        if(s < 0) {
+            ESP_LOGE(TAG, "... Failed to allocate socket.");
+            vTaskDelay(10000 / portTICK_PERIOD_MS);
+            continue;
+        }
+        ESP_LOGI(TAG, "... allocated socket");
 
-	memset(&serv_addr, '0', sizeof(serv_addr));
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_port = htons(WEB_PORT);
+        memset(&serv_addr, '0', sizeof(serv_addr));
+        serv_addr.sin_family = AF_INET;
+        serv_addr.sin_port = htons(WEB_PORT);
 
-	if(inet_pton(AF_INET, WEB_SERVER, &serv_addr.sin_addr)<=0)
-	{
-		ESP_LOGE(TAG,"\n inet_pton error occured\n");
-		return;
-	}
+        if(inet_pton(AF_INET, WEB_SERVER, &serv_addr.sin_addr)<=0)
+        {
+            ESP_LOGE(TAG,"\n inet_pton error occured\n");
+            vTaskDelay(10000 / portTICK_PERIOD_MS);
+            continue;
+        }
 
-	if(connect(s, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-	{
-        ESP_LOGE(TAG, "... socket connect failed errno=%d", errno);
+        if(connect(s, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
+        {
+            ESP_LOGE(TAG, "... socket connect failed errno=%d", errno);
+            close(s);
+            vTaskDelay(10000 / portTICK_PERIOD_MS);
+            continue;
+        }
+
+        ESP_LOGI(TAG, "... connected");
+        int req_size = strlen(REQUEST)+52;
+        char http_req[req_size];
+        build_http_str(http_req, values.temperature, values.humidity, voc_index);
+        ESP_LOGI(TAG, "%s", http_req);
+
+        if (write(s, http_req, req_size) < 0) {
+            ESP_LOGE(TAG, "... socket send failed");
+            vTaskDelay(10000 / portTICK_PERIOD_MS);
+            close(s);
+            continue;
+        }
+        ESP_LOGI(TAG, "... socket send success");
+
+        ESP_LOGI(TAG, "%s", http_req);
         close(s);
-        return;
+
+        ESP_ERROR_CHECK(example_disconnect());
+
+        ESP_ERROR_CHECK(esp_sleep_enable_timer_wakeup(60000));
+        ESP_ERROR_CHECK(esp_light_sleep_start());
     }
-
-    ESP_LOGI(TAG, "... connected");
-	int req_size = strlen(REQUEST)+52;
-	char http_req[req_size];
-	build_http_str(http_req, values.temperature, values.humidity, voc_index);
-	ESP_LOGI(TAG, "%s", http_req);
-
-    if (write(s, http_req, req_size) < 0) {
-        ESP_LOGE(TAG, "... socket send failed");
-        close(s);
-        return;
-    }
-    ESP_LOGI(TAG, "... socket send success");
-
-	ESP_LOGI(TAG, "%s", http_req);
-	close(s);
-	return;
 }
 
 
@@ -199,13 +210,9 @@ void app_main(void)
      * Read "Establishing Wi-Fi or Ethernet Connection" section in
      * examples/protocols/README.md for more information about this function.
      */
-    ESP_ERROR_CHECK(example_connect());
-    http_get_task();
+    
+    xTaskCreate(&http_get_task, "http_get_task", 4096, NULL, 5, NULL);
+    
 
-    const int wakeup_time_sec = 180; // 900 seconds = 15 minutes
-    ESP_LOGI(TAG, "Enabling timer wakeup, %ds\n", wakeup_time_sec);
-    esp_sleep_enable_timer_wakeup(wakeup_time_sec * 1000000);
-
-    ESP_LOGI(TAG, "Entering deep sleep\n");
-    esp_deep_sleep_start();
+  
 }
