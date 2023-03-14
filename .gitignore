@@ -5,6 +5,7 @@
 **/.pnp
 **/.pnp.js
 webserver/db.sqlite
+**/.env
 
 # testing
 /coverage

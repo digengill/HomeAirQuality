@@ -44,6 +44,7 @@ export default function App() {
   const [temp, setTemp] = useState([]);
   const [hum, setHum] = useState([]);
   const [voc, setVoc] = useState([]);
+  const [gasr, setGasr] = useState([]);
 
  let zip = (a1, a2) => a1.map((x, i) => [x, a2[i]]);
 
@@ -55,17 +56,19 @@ export default function App() {
     let ttemp = []
     let thum = []
     let tvoc = []
+    let tgasr = []
     res.data.data.forEach(element => {
       tdt.push(element['dt'])
       ttemp.push(element['temp'])
       thum.push(element['humidity'])
       tvoc.push(element['voc'])
+      tgasr.push(element['gasresistance']/1000)
     });
     setDt(tdt);
     setTemp(ttemp);
     setHum(thum);
     setVoc(tvoc);
-  
+    setGasr(tgasr);
   }) 
 }, []);
 
@@ -89,7 +92,13 @@ const data = {
 		data: zip(dt,voc),
     borderColor: 'rgb(23, 162, 135)',
     backgroundColor: 'rgba(12, 12, 232, 0.5)'
-	  }
+	  },
+    {
+	    label: "Gas Resistance",
+	    data: zip(dt, gasr),
+	    borderColor: 'rgb(165,42,42)',
+	    backgroungColor: 'rgba(165,42,42,0.5)'
+    }
   ]
 };
 

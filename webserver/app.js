@@ -26,8 +26,8 @@ app.get("/readings", (req, res, next) => {
 
 app.post('/sgp40', (req, res) => {
   console.log(req.body)
-  var sql ='INSERT INTO ESPReadings (hostname, dt, temp, humidity, voc) VALUES (?,?,?,?,?)'
-  var params =["esp01", new Date().toISOString(), parseFloat(req.body.temp).toFixed(2), parseFloat(req.body.humidity).toFixed(2), req.body.voc]
+  var sql ='INSERT INTO ESPReadings (hostname, dt, temp, humidity, voc, gasresistance) VALUES (?,?,?,?,?,?)'
+  var params =["esp01", new Date().toISOString(), parseFloat(req.body.temp).toFixed(2), parseFloat(req.body.humidity).toFixed(2), req.body.voc, req.body.gasr]
   db.run(sql, params, function (err, result) {
       if (err){
           //res.status(400).json({"error": err.message})

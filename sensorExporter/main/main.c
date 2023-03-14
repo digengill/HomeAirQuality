@@ -51,7 +51,7 @@ static const char *TAG = "example";
 static const char *REQUEST = "POST " WEB_PATH " HTTP/1.1\r\n"
     "Host: "WEB_SERVER":3001\r\n"
     "Content-Type: application/x-www-form-urlencoded\r\n"
-    "Content-Length: 41\r\n\r\n";
+    "Content-Length: 46\r\n\r\n";
 
 
 
@@ -71,15 +71,15 @@ static const char *voc_index_name(int32_t voc_index)
     return "RUN!";
 }
 
-static void build_http_str(char *http_req, float temp, float humidity, int voc)
+static void build_http_str(char *http_req, float temp, float humidity, int voc, int gas_resistance)
 {
-    char buffer[50];
-    sprintf(buffer, "temp=%f&humidity=%f&voc=%03d\r\n\r\n", temp, humidity, voc);
+    char buffer[54];
+    sprintf(buffer, "temp=%06.3f&humidity=%06.3f&voc=%03d&gasr=%05d\r\n\r\n", temp, humidity, voc, gas_resistance);
     strcpy(http_req, REQUEST);
     strcat(http_req, buffer);
 }
 
-static void getAverageReading(float *temp, float *humidity, int *voc) {
+static void getAverageReading(float *temp, float *humidity, int *voc, int *gas_resistance) {
     bme680_t sensor;
     sgp40_t sgp;
 
@@ -89,11 +89,13 @@ static void getAverageReading(float *temp, float *humidity, int *voc) {
     ESP_ERROR_CHECK(sgp40_init(&sgp));
     ESP_LOGI(TAG, "SGP40 initilalized. Serial: 0x%04x%04x%04x",
             sgp.serial[0], sgp.serial[1], sgp.serial[2]);
+
     // setup bme680
     memset(&sensor, 0, sizeof(bme680_t));
     ESP_ERROR_CHECK(bme680_init_desc(&sensor, ADDR, PORT, CONFIG_EXAMPLE_I2C_MASTER_SDA, CONFIG_EXAMPLE_I2C_MASTER_SCL));
     // init the sensor
     ESP_ERROR_CHECK(bme680_init_sensor(&sensor));
+
     // Changes the oversampling rates to 4x oversampling for temperature
     // and 2x oversampling for humidity. Pressure measurement is skipped.
     bme680_set_oversampling_rates(&sensor, BME680_OSR_4X, BME680_OSR_NONE, BME680_OSR_2X);
@@ -112,8 +114,8 @@ static void getAverageReading(float *temp, float *humidity, int *voc) {
     vTaskDelay(pdMS_TO_TICKS(250));
 
     int32_t voc_index;
-    int iterations = 500; int32_t total = 0;
-    for (int i = 0; i <= iterations; i++)
+    int32_t total = 0;
+    for (int i = 0; i < 50; i++)
     {
         // trigger the sensor to start one TPHG measurement cycle
         if (bme680_force_measurement(&sensor) == ESP_OK)
@@ -125,30 +127,36 @@ static void getAverageReading(float *temp, float *humidity, int *voc) {
             if (bme680_get_results_float(&sensor, &values) == ESP_OK)
                 printf("BME680 Sensor: %.2f °C, %.2f %%, %.2f hPa, %.2f Ohm\n",
                         values.temperature, values.humidity, values.pressure, values.gas_resistance);
-            
-            // Feed it to SGP40
-            ESP_ERROR_CHECK(sgp40_measure_voc(&sgp, values.humidity, values.temperature, &voc_index));
-            ESP_LOGI(TAG, "%.2f °C, %.2f %%, VOC index: %" PRIi32 ", Air is [%s]",
-                values.temperature, values.humidity, voc_index, voc_index_name(voc_index));
-        }
-        if (i > 300)
+	}
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+    }
+
+    for (int i = 0; i <= 200; i++)
+    {
+        // Feed it to SGP40
+        ESP_ERROR_CHECK(sgp40_measure_voc(&sgp, values.humidity, values.temperature, &voc_index));
+        ESP_LOGI(TAG, "%.2f °C, %.2f %%, VOC index: %" PRIi32 ", Air is [%s]",
+            values.temperature, values.humidity, voc_index, voc_index_name(voc_index));
+        if (i > 150)
         {
             total = total + voc_index;
         }
-        vTaskDelay(3000 / portTICK_PERIOD_MS);
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
     }
-    *voc = total / 200;
+    *voc = total / 50;
     *temp = values.temperature;
     *humidity = values.humidity;
-
+    *gas_resistance = values.gas_resistance;
 }
 
 
 static void http_get_task()
 {
     float temp, humidity;
-    int voc;
-    getAverageReading(&temp, &humidity, &voc);
+    int gas_resistance, voc;
+    
+    vTaskDelay(10000 / portTICK_PERIOD_MS);
+    getAverageReading(&temp, &humidity, &voc, &gas_resistance);
 
     int s;
     struct sockaddr_in serv_addr;
@@ -157,6 +165,7 @@ static void http_get_task()
         s = socket(AF_INET, SOCK_STREAM, 0);
         if(s < 0) {
             ESP_LOGE(TAG, "... Failed to allocate socket.");
+
             vTaskDelay(10000 / portTICK_PERIOD_MS);
             continue;
         }
@@ -184,7 +193,7 @@ static void http_get_task()
         ESP_LOGI(TAG, "... connected");
         int req_size = strlen(REQUEST)+52;
         char http_req[req_size];
-        build_http_str(http_req, temp, humidity, voc);
+        build_http_str(http_req, temp, humidity, voc, gas_resistance);
         ESP_LOGI(TAG, "%s", http_req);
 
         if (write(s, http_req, req_size) < 0) {
@@ -218,7 +227,7 @@ void app_main(void)
      */
     http_get_task();
 
-    const int wakeup_time_sec = 180; // 900 seconds = 15 minutes
+    const int wakeup_time_sec = 1800; // 900 seconds = 15 minutes
     ESP_LOGI(TAG, "Enabling timer wakeup, %ds\n", wakeup_time_sec);
     esp_sleep_enable_timer_wakeup(wakeup_time_sec * 1000000);
 

@@ -15,7 +15,8 @@ let db = new sqlite3.Database(DBSOURCE, (err) => {
             dt text, 
             temp REAL,
             humidity REAL,  
-            voc INTEGER 
+            voc INTEGER,
+	    gasresistance INTEGER;  
             )`,
         (err) => {
             if (err) {
@@ -23,8 +24,8 @@ let db = new sqlite3.Database(DBSOURCE, (err) => {
 		console.log(err)
             }else{
                 // Table just created, creating some rows
-                var insert = 'INSERT INTO ESPReadings (hostname, dt, temp, humidity, voc) VALUES (?,?,?,?,?)'
-                db.run(insert, ["test","2023-03-07 22:05:00.000", 0.0, 0.0, 0])
+                //var insert = 'INSERT INTO ESPReadings (hostname, dt, temp, humidity, voc) VALUES (?,?,?,?,?)'
+                //db.run(insert, ["test","2023-03-07 22:05:00.000", 0.0, 0.0, 0])
             }
         });  
     }
